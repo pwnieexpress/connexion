@@ -73,7 +73,10 @@ def validate_token_info(token_info, allowed_scopes):
     :type token_info: dict
     :return: None
     """
-    scope = token_info.get('scope') or token_info.get('scopes')
+    scope = token_info.get('scope')
+    if scope is None:
+        scope = token_info.get('scopes')
+
     if isinstance(scope, list):
         user_scopes = set(scope)
     else:
@@ -149,6 +152,36 @@ def verify_oauth_remote(token_info_url, allowed_scopes, function):
             )
 
         token_info = token_request.json()  # type: dict
+        validate_token_info(token_info, allowed_scopes)
+        request.context['user'] = token_info.get('uid')
+        request.context['token_info'] = token_info
+        return function(request)
+    return wrapper
+
+
+def verify_apikey_local(token_info_func, allowed_scopes, function):
+    """
+    Decorator to verify apikey locally
+
+    :param token_info_func: Function to get information about the token
+    :type token_info_func: Function
+    :param allowed_scopes: Set with scopes that are allowed to access the endpoint
+    :type allowed_scopes: set
+    :type function: types.FunctionType
+    :rtype: types.FunctionType
+    """
+
+    @functools.wraps(function)
+    def wrapper(request):
+        logger.debug("%s ApiKey local verification...", request.url)
+
+        token = get_authorization_token(request)
+        token_info = token_info_func(token)
+        if token_info is None:
+            raise OAuthResponseProblem(
+                description='Provided oauth token is not valid',
+                token_response=token_info
+            )
         validate_token_info(token_info, allowed_scopes)
         request.context['user'] = token_info.get('uid')
         request.context['token_info'] = token_info
